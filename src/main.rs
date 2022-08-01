@@ -25,10 +25,14 @@ SOFTWARE.
 extern crate ocl;
 extern crate image;
 extern crate clap;
+extern crate rhai;
 
 mod formats;
+mod compute;
 
 use clap::Parser;
+
+use compute::CInstance;
 
 
 pub const RED:   &str = "\x1b[38;2;255;0;0m";
@@ -40,20 +44,33 @@ pub const CLEAR: &str = "\x1b[m";
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
+    /// Source data
+    #[clap(value_parser)]
+    src: Option<String>,
+    /// Opencl program to be used
+    #[clap(value_parser)]
+    program: Option<String>,
+    /// Rhai script pipeline
+    #[clap(value_parser)]
+    pipeline: Option<String>,
+
+    #[clap(value_parser)]
+    /// The maximum width of the images to process
+    width: Option<usize>,
+    #[clap(value_parser)]
+    /// The maximum height of the images to process
+    height: Option<usize>,
+
+    #[clap(short, long, value_parser, default_value_t = String::from("out"))]
+    /// Output file or directory
+    output: String,
+
     /// List all available platforms and devices
     #[clap(short = 'l', long, action)]
     list_platform: bool,
 
     #[clap(short, long, action)]
-    verbose: bool,
-
-
-    /// Name of the platform to use
-    #[clap(short, long, value_parser)]
-    platform_name: Option<String>,
-    /// Name of the device to use
-    #[clap(short, long, value_parser)]
-    device_name: Option<String>
+    verbose: bool
 }
 
 
@@ -63,32 +80,58 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    // let platform = get_platform(args.platform_name);
-    // let device   = get_device(args.device_name);
-
     if args.list_platform {
         list_platform(args.verbose);
     } else {
-        check_opencl_device();
-    }
-}
+
+        let src = match args.src {
+            None => {
+                eprintln!("{}Provide source image or directory to process.{}", RED, CLEAR);
+                eprintln!("To print help use --help.");
+                return;
+            },
+            Some(s) => s
+        };
+
+        let program = match args.program {
+            None => {
+                eprintln!("{}Provide the opencl program.{}", RED, CLEAR);
+                eprintln!("To print help use --help.");
+                return;
+            },
+            Some(s) => s
+        };
+
+        let pipeline = match args.pipeline {
+            None => {
+                eprintln!("{}Provide a pipepline to follow.{}", RED, CLEAR);
+                eprintln!("To print help use --help.");
+                return;
+            },
+            Some(s) => s
+        };
 
 
+        let size = match (args.width, args.height) {
+            (Some(w), Some(h)) => (w, h),
+            _ => {
+                eprintln!("{}Provide the maximum image dimentions.{}", RED, CLEAR);
+                eprintln!("To print help use --help.");
+                return;
+            }
+        };
 
-fn check_opencl_device() {
-    use ocl::{Device, Platform};
-    use ocl::enums::{DeviceInfoResult, DeviceInfo};
+        let mut compute = CInstance::init(args.verbose, program, pipeline, size);
 
-    // check image processing capabilities
-    let platform = Platform::first().expect("Could not get GPU platform");
-    let device   = Device::first(platform).expect("Could not get GPU device");
+        use image::RgbImage;
+        use image::io::Reader as ImageReader;
 
-    if let Ok(DeviceInfoResult::ImageSupport(b)) = device.info(DeviceInfo::ImageSupport) {
-        if !b {
-            panic!("No image support on selected device");
-        }
-    } else {
-        panic!("No image support on selected device");
+        // TODO: improve image manipulation errors & add directory treatment
+        let img = ImageReader::open(format!("{}", &src)).unwrap().decode().unwrap();
+        let image: RgbImage = img.into_rgb8();
+
+        let out = compute.compute(&image);
+        out.save(args.output).unwrap();
     }
 }
 
@@ -194,7 +237,7 @@ fn list_platform(verbose: bool) {
 
                     // images
                     if let Ok(DIR::ImageSupport(b)) = d.info(DeviceInfo::ImageSupport) {
-                        print!("   image support: {}", format_bool(b));
+                        println!("    image support: {}", format_bool(b));
                     }
                     if let (Ok(DIR::Image2dMaxWidth(w)), Ok(DIR::Image2dMaxHeight(h)))
                             = (d.info(DeviceInfo::Image2dMaxWidth), d.info(DeviceInfo::Image2dMaxHeight)) {
@@ -202,7 +245,7 @@ fn list_platform(verbose: bool) {
                     }
                     if let (Ok(DIR::Image3dMaxWidth(w)), Ok(DIR::Image3dMaxHeight(h)), Ok(DIR::Image3dMaxDepth(d)))
                             = (d.info(DeviceInfo::Image3dMaxWidth), d.info(DeviceInfo::Image3dMaxHeight), d.info(DeviceInfo::Image3dMaxDepth)) {
-                        println!("    max image2D dim: {}x{}x{}", w, h, d);
+                        println!("    max image3D dim: {}x{}x{}", w, h, d);
                     }
 
 
