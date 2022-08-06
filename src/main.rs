@@ -74,6 +74,10 @@ struct Args {
     #[clap(short = 'l', long, action)]
     list_platform: bool,
 
+    /// rhai script configuration
+    #[clap(short, long, value_parser)]
+    config: Option<String>,
+
     #[clap(short, long, action)]
     verbose: bool
 }
@@ -126,7 +130,13 @@ fn main() {
             }
         };
 
-        let mut compute = CInstance::init(args.verbose, program, pipeline, size);
+
+        let config = match args.config {
+            Some(c) => c,
+            None => String::from("{}")
+        };
+
+        let mut compute = CInstance::init(args.verbose, program, pipeline, config, size);
 
         use std::fs::metadata;
 

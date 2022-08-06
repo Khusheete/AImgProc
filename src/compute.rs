@@ -29,7 +29,7 @@ use std::cell::{RefCell, RefMut, Ref};
 
 use ocl::{ProQue, Buffer};
 
-use rhai::{Engine, Dynamic, Scope, AST};
+use rhai::{Engine, Dynamic, Scope, AST, Map};
 
 use image::RgbImage;
 
@@ -44,7 +44,9 @@ pub struct CInstance {
 impl CInstance {
 
 
-    pub fn init(verbose: bool, ocl_prog: String, pipeline: String, size: (usize, usize)) -> Self {
+    pub fn init(verbose: bool, ocl_prog: String, pipeline: String, 
+            pipeline_config: String, size: (usize, usize)) -> Self 
+    {
         if verbose {
             println!("* Initializing compute environment");
             println!("** Reading opencl source");
@@ -99,10 +101,13 @@ impl CInstance {
         }
 
 
-        let mut cscope = CScope::init(buffers, prog_queue);
-        cscope.set_image_size(size);
-
         let mut rhai_eng = Engine::new();
+
+        rhai_eng.set_max_expr_depths(64, 64);
+
+        let pipeline_config = rhai_eng.parse_json(pipeline_config, true).expect("Invalid pipeline configuration");
+        let mut cscope = CScope::init(buffers, pipeline_config.clone(), prog_queue);
+        cscope.set_image_size(size);
 
         rhai_eng.register_type_with_name::<CScope>("Ocl")
             .register_fn("call_kernel", CScope::call_kernel);
@@ -135,6 +140,7 @@ impl CInstance {
                 .register_fn("create_dynimage", CScope::create_dynimage);
 
             init_scope.push("ocl", cscope.clone());
+            init_scope.push("config", pipeline_config);
 
             let _result: () = init_eng.call_fn(&mut init_scope, &rhai_ast, "init", ()).unwrap();
         }
@@ -170,6 +176,7 @@ impl CInstance {
 #[derive(Clone)]
 struct CScope {
     buffers: Rc<RefCell<HashMap<String, Buff>>>,
+    config: Map,
     prog_queue: ProQue,
     dynimg_size: (usize, usize)
 }
@@ -228,9 +235,10 @@ impl ImageRhaiRef {
 impl CScope {
 
 
-    fn init(buffers: HashMap<String, Buff>, prog_queue: ProQue) -> Self {
+    fn init(buffers: HashMap<String, Buff>, config: Map, prog_queue: ProQue) -> Self {
         Self {
             buffers: Rc::new(RefCell::new(buffers)),
+            config: config,
             prog_queue: prog_queue,
             dynimg_size: (0, 0)
         }
@@ -368,6 +376,8 @@ impl CScope {
                 }
             }
         }
+
+        scope.push("config", self.config.clone());
 
         return scope;
     }
