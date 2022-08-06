@@ -34,6 +34,11 @@ use clap::Parser;
 
 use compute::CInstance;
 
+use image::RgbImage;
+use image::io::Reader as ImageReader;
+
+use std::path::Path;
+
 
 pub const RED:   &str = "\x1b[38;2;255;0;0m";
 pub const GREEN: &str = "\x1b[38;2;0;255;0m";
@@ -123,15 +128,70 @@ fn main() {
 
         let mut compute = CInstance::init(args.verbose, program, pipeline, size);
 
-        use image::RgbImage;
-        use image::io::Reader as ImageReader;
+        use std::fs::metadata;
 
-        // TODO: improve image manipulation errors & add directory treatment
-        let img = ImageReader::open(format!("{}", &src)).unwrap().decode().unwrap();
-        let image: RgbImage = img.into_rgb8();
+        let src_meta = metadata(format!("{}", &src)).expect(format!("File `{}` does not exist", src).as_str());
 
-        let out = compute.compute(&image);
-        out.save(args.output).unwrap();
+        if src_meta.is_dir() {
+            process_dir(&mut compute, Path::new(&src), Path::new(&args.output));
+        } else if src_meta.is_file() {
+            process_file(&mut compute, Path::new(&src), Path::new(&args.output));
+        }
+    }
+}
+
+
+/// Applies the compute pipeline to the input file, saving it to out_file
+fn process_file(compute: &mut CInstance, in_file: &Path, out_file: &Path) {
+    let img = ImageReader::open(in_file)
+        .expect(format!("Could not read file `{}`", in_file.to_str().unwrap()).as_str()).decode()
+        .expect(format!("Could not read image at `{}`", in_file.to_str().unwrap()).as_str());
+    let image: RgbImage = img.into_rgb8();
+
+    let out = compute.compute(&image);
+    out.save(out_file)
+        .expect(format!("Could not save image to `{}`", out_file.to_str().unwrap()).as_str());
+}
+
+
+fn process_dir(compute: &mut CInstance, in_dir: &Path, out_dir: &Path) {
+    use std::fs;
+
+    let file_count = fs::read_dir(in_dir)
+        .expect(format!("Could not read files in `{}`", in_dir.to_str().unwrap()).as_str())
+        .count();
+    
+    let mut i = 0;
+
+    println!("<----------------------------------------> 0.00%");
+
+    for file in fs::read_dir(in_dir).unwrap() {
+        match file {
+            Ok(file) => {
+                if file.file_type().unwrap().is_file() {
+                    let mut in_file = in_dir.to_path_buf();
+                    in_file.push(file.file_name());
+
+                    let mut out_file = out_dir.to_path_buf();
+                    out_file.push(file.file_name());
+
+                    process_file(compute, in_file.as_path(), out_file.as_path());
+                }
+            }
+            _ => {}
+        }
+
+        i += 1;
+        let progress_percent = (i as f32 / file_count as f32) * 100.0;
+        let progress = ((i as f32 / file_count as f32) * 40.0) as i32;
+        print!("\x1b[A\r<");
+        for _ in 0..progress {
+            print!("=");
+        }
+        for _ in progress..40 {
+            print!("-");
+        }
+        println!("> {:.2}%", progress_percent);
     }
 }
 
