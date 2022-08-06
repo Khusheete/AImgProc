@@ -10,6 +10,16 @@ fn sobel_y(scale) {
 }
 
 
+fn laplacian() {
+    [0.0, -1.0, 0.0, -1.0, 4.0, -1.0, 0.0, -1.0, 0.0]
+}
+
+
+fn laplacian_diag() {
+    [-1.0, -1.0, -1.0, -1.0, 8.0, -1.0, -1.0, -1.0, -1.0]
+}
+
+
 fn gauss(size, sigma) {
     let kernel = [];
     let sigma2 = sigma * sigma;
@@ -29,19 +39,53 @@ fn gauss(size, sigma) {
 
 
 fn init() {
-    ocl.create_float_buffer("gauss", gauss(5, 1.0));
-    ocl.create_float_buffer("sobel_x", sobel_x(0.5));
-    ocl.create_float_buffer("sobel_y", sobel_y(0.5));
+    if config?.gauss != () {
+        ocl.create_float_buffer("gauss", gauss(5, 1.0));
+    }
 
-    ocl.create_dynimage("buffer");
+    switch config?.mode {
+        "sobel" => {
+            ocl.create_float_buffer("sobel_x", sobel_x(0.5));
+            ocl.create_float_buffer("sobel_y", sobel_y(0.5));
+        }
+        "laplacian" => {
+            ocl.create_float_buffer("laplacian", laplacian());
+        }
+        "laplacian_diag" => {
+            ocl.create_float_buffer("laplacian", laplacian_diag());
+        }
+        _ => {
+            print("Provide operating mode (mode=sobel|laplacian|laplacian_diag)");
+        }
+    }
+
+    ocl.create_dynimage("buffer1");
+    ocl.create_dynimage("buffer2");
 }
 
 
 fn run() {
-    ocl.call_kernel("apply_kernel", [input , output, gauss  , 5, 5]);
-    ocl.call_kernel("apply_kernel", [output, input , sobel_x, 3, 3]);
-    ocl.call_kernel("apply_kernel", [output, buffer, sobel_y, 3, 3]);
-    ocl.call_kernel("combine_sobel", [input, buffer, output, 1]);
+    let a = input;
+    let b = buffer1;
+    let c = buffer2;
 
-    // ocl.call_kernel("dim", [input, output, 3]);
+    if config?.gauss != () {
+        ocl.call_kernel("apply_kernel", [input, buffer1, gauss, 5, 5]);
+        a = buffer1;
+        b = input;
+    }
+
+    switch config?.mode {
+        "sobel" => {
+            ocl.call_kernel("apply_kernel",  [a, b, sobel_x, 3, 3]);
+            ocl.call_kernel("apply_kernel",  [a, c, sobel_y, 3, 3]);
+            ocl.call_kernel("combine_sobel", [b, c, output, 1]);
+        }
+        "laplacian" => {
+            ocl.call_kernel("apply_kernel", [a, output, laplacian, 3, 3]);
+        }
+        "laplacian_diag" => {
+            ocl.call_kernel("apply_kernel", [a, output, laplacian, 3, 3]);
+        }
+    }
 }
