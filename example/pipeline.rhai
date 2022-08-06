@@ -41,7 +41,7 @@ fn run() {
     ocl.call_kernel("apply_kernel", [input , output, gauss  , 5, 5]);
     ocl.call_kernel("apply_kernel", [output, input , sobel_x, 3, 3]);
     ocl.call_kernel("apply_kernel", [output, buffer, sobel_y, 3, 3]);
-    ocl.call_kernel("combine_sobel", [input, buffer, output]);
+    ocl.call_kernel("combine_sobel", [input, buffer, output, 1]);
 
     // ocl.call_kernel("dim", [input, output, 3]);
 }

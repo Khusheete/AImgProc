@@ -121,8 +121,10 @@ __kernel void apply_kernel(__global Color* in_colors, __global Color* out_colors
 }
 
 
+// norm is 0 to combine the two images with the angle of the vect
+// norm is 1 to combine the two images with their norm
 __kernel void combine_sobel(__global Color* img0_colors, __global Color* img1_colors,
-    __global Color* out_colors, const uint img_w, const uint img_h)
+    __global Color* out_colors, const long type, const uint img_w, const uint img_h)
 {
     INIT();
     const IMAGE(img0, img0_colors);
@@ -133,13 +135,19 @@ __kernel void combine_sobel(__global Color* img0_colors, __global Color* img1_co
     Color px0 = get_pixel(pos, img0);
     Color px1 = get_pixel(pos, img1);
 
-    int r = sqrt((double)(px0.r * px0.r + px1.r * px1.r));
-    int g = sqrt((double)(px0.g * px0.g + px1.g * px1.g));
-    int b = sqrt((double)(px0.b * px0.b + px1.b * px1.b));
+    int r, g, b;
 
-    // int r = (atan2pi((double) px1.r, (double) px0.r) + 0.5f) * 255.0f;
-    // int g = (atan2pi((double) px1.g, (double) px0.g) + 0.5f) * 255.0f;
-    // int b = (atan2pi((double) px1.b, (double) px0.b) + 0.5f) * 255.0f;
+    if (type == 0) {
+        r = (atan2pi((double) px1.r, (double) px0.r) + 0.5f) * 255.0f;
+        g = (atan2pi((double) px1.g, (double) px0.g) + 0.5f) * 255.0f;
+        b = (atan2pi((double) px1.b, (double) px0.b) + 0.5f) * 255.0f;
+    } else if (type == 1) {
+        r = sqrt((double)(px0.r * px0.r + px1.r * px1.r));
+        g = sqrt((double)(px0.g * px0.g + px1.g * px1.g));
+        b = sqrt((double)(px0.b * px0.b + px1.b * px1.b));
+    }
+
+
 
     r = constrain(r, 0, 255);
     g = constrain(g, 0, 255);
