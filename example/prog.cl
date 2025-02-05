@@ -5,13 +5,13 @@ typedef struct {
 
 
 typedef struct {
-    uint2 size;
+    int2 size;
     __global Color* px;
 } Image;
 
 
 // Image manipulation code
-Color get_pixel(const uint2 pos, const Image img) {
+Color get_pixel(const int2 pos, const Image img) {
     if (pos.x >= 0 && pos.x < img.size.x && pos.y >= 0 && pos.y < img.size.y) {
         return img.px[pos.x + pos.y * img.size.x];
     } else {
@@ -21,7 +21,7 @@ Color get_pixel(const uint2 pos, const Image img) {
 }
 
 
-void set_pixel(const uint2 pos, const Color c, Image img) {
+void set_pixel(const int2 pos, const Color c, Image img) {
     if (pos.x >= 0 && pos.x < img.size.x && pos.y >= 0 && pos.y < img.size.y) {
         img.px[pos.x + pos.y * img.size.x] = c;
     }
@@ -30,8 +30,8 @@ void set_pixel(const uint2 pos, const Color c, Image img) {
 
 // kernels and user code
 #define INIT() \
-const uint2 pos = {get_global_id(0), get_global_id(1)}; \
-const uint2 size = {img_w, img_h};                      \
+const int2 pos = {get_global_id(0), get_global_id(1)}; \
+const int2 size = {img_w, img_h};                      \
 if (pos.x >= size.x || pos.y >= size.y) {               \
     return;                                             \
 }
@@ -47,7 +47,7 @@ float constrain(float val, float min, float max) {
 
 
 __kernel void dim(__global Color* in_colors, __global Color* out_colors,
-    const long factor, const uint img_w, const uint img_h) 
+    const long factor, const int img_w, const int img_h) 
 {
     INIT();
     const IMAGE(in, in_colors);
@@ -63,13 +63,13 @@ __kernel void dim(__global Color* in_colors, __global Color* out_colors,
 
 
 typedef struct {
-    ulong2 size;
-    __constant double* data;
+    int2 size;
+    __constant float* data;
 } Kernel;
 
 
 // Returns the kernel value at `(x, y)`
-float get_ker_val(uint2 pos, const Kernel ker)
+float get_ker_val(int2 pos, const Kernel ker)
 {
     pos.x += ker.size.x / 2;
     pos.y += ker.size.y / 2;
@@ -82,15 +82,15 @@ float get_ker_val(uint2 pos, const Kernel ker)
 
 
 __kernel void apply_kernel(__global Color* in_colors, __global Color* out_colors,
-    __constant double* ker_data, const ulong ker_w, const ulong ker_h,
-    const uint img_w, const uint img_h) 
+    __constant float* ker_data, const int ker_w, const int ker_h,
+    const int img_w, const int img_h) 
 {
     INIT();
     const IMAGE(in, in_colors);
     IMAGE(out, out_colors);
 
     // setup kernel struct
-    const ulong2 ksize = {ker_w, ker_h};
+    const int2 ksize = {ker_w, ker_h};
     const Kernel ker = {ksize, ker_data};
 
     // calculate new color
@@ -100,7 +100,7 @@ __kernel void apply_kernel(__global Color* in_colors, __global Color* out_colors
 
     for (int i = 0; i < ker_w; i++) {
         for (int j = 0; j < ker_h; j++) {
-            uint2 d = {i - ker_w / 2, j - ker_h / 2};
+            int2 d = {i - ker_w / 2, j - ker_h / 2};
 
             Color px = get_pixel(pos + d, in);
             float k_val = get_ker_val(d, ker);
@@ -124,7 +124,7 @@ __kernel void apply_kernel(__global Color* in_colors, __global Color* out_colors
 // norm is 0 to combine the two images with the angle of the vect
 // norm is 1 to combine the two images with their norm
 __kernel void combine_sobel(__global Color* img0_colors, __global Color* img1_colors,
-    __global Color* out_colors, const long type, const uint img_w, const uint img_h)
+    __global Color* out_colors, const int type, const int img_w, const int img_h)
 {
     INIT();
     const IMAGE(img0, img0_colors);

@@ -45,8 +45,8 @@ fn init() {
 
     switch config?.mode {
         "sobel" => {
-            ocl.create_float_buffer("sobel_x", sobel_x(0.5));
-            ocl.create_float_buffer("sobel_y", sobel_y(0.5));
+            ocl.create_float_buffer("sobel_x", sobel_x(1.0));
+            ocl.create_float_buffer("sobel_y", sobel_y(1.0));
         }
         "laplacian" => {
             ocl.create_float_buffer("laplacian", laplacian());

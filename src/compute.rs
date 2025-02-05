@@ -137,10 +137,14 @@ impl CInstance {
             init_eng.register_type_with_name::<CScope>("Ocl")
                 .register_fn("create_int_buffer", CScope::create_int_buffer)
                 .register_fn("create_float_buffer", CScope::create_float_buffer)
+                .register_fn("create_int_buffer_of_size", CScope::create_int_buffer_of_size)
+                .register_fn("create_float_buffer_of_size", CScope::create_float_buffer_of_size)
                 .register_fn("create_dynimage", CScope::create_dynimage);
 
-            init_scope.push("ocl", cscope.clone());
-            init_scope.push("config", pipeline_config);
+            init_scope.push("ocl", cscope.clone())
+                .push("config", pipeline_config)
+                .push_constant("IMG_WIDTH", size.0 as i32)
+                .push_constant("IMG_HEIGHT", size.1 as i32);
 
             let _result: () = init_eng.call_fn(&mut init_scope, &rhai_ast, "init", ()).unwrap();
         }
@@ -162,8 +166,8 @@ impl CInstance {
         self.scope.set_input(img);
         let mut scope = self.scope.create_rhai_scope();
         scope.push("ocl", self.scope.clone());
-        scope.push_constant("IMG_WIDTH", img.width())
-            .push_constant("IMG_HEIGTH", img.height());
+        scope.push_constant("IMG_WIDTH", img.width()  as i32)
+            .push_constant("IMG_HEIGTH", img.height() as i32);
 
         let _result: () = self.rhai_eng.call_fn(&mut scope, &self.rhai_ast, "run", ()).unwrap();
 
@@ -187,24 +191,24 @@ struct CScope {
 /// but images will be sent with their dimentions (they take three arguments)
 #[derive(Clone)]
 enum Buff {
-    IntBuffer(Buffer<i64>),
-    FloatBuffer(Buffer<f64>),
+    IntBuffer(Buffer<i32>),
+    FloatBuffer(Buffer<f32>),
     DynImage(Buffer<u8>),
-    Image(Buffer<u8>, usize, usize)
+    Image(Buffer<u8>, i32, i32)
 }
 
 
 #[derive(Clone)]
 struct BufferRhaiRef {
     name: String,
-    size: usize
+    size: i32
 }
 
 
 // TODO: allow modifications
 impl BufferRhaiRef {
 
-    fn len(&self) -> usize {
+    fn len(&self) -> i32 {
         self.size
     }
 }
@@ -214,19 +218,19 @@ impl BufferRhaiRef {
 #[derive(Clone)]
 struct ImageRhaiRef {
     name: String,
-    width: usize,
-    height: usize
+    width: i32,
+    height: i32
 }
 
 
 impl ImageRhaiRef {
 
-    fn width(&self) -> usize {
+    fn width(&self) -> i32 {
         self.width
     }
 
 
-    fn height(&self) -> usize {
+    fn height(&self) -> i32 {
         self.height
     }
 }
@@ -313,8 +317,8 @@ impl CScope {
             }
         }
 
-        let ker = ker.arg(self.dynimg_size.0 as u32)
-            .arg(self.dynimg_size.1 as u32)
+        let ker = ker.arg(self.dynimg_size.0 as i32)
+            .arg(self.dynimg_size.1 as i32)
             .build()
             .expect("Could not build kernel.");
 
@@ -363,13 +367,13 @@ impl CScope {
         for name in self.get_buffers().keys() {
             match &self.get_buffers()[name] {
                 Buff::IntBuffer(b) => {
-                    scope.push(name, BufferRhaiRef{name: name.clone(), size: b.len()});
+                    scope.push(name, BufferRhaiRef{name: name.clone(), size: b.len() as i32});
                 }
                 Buff::FloatBuffer(b) => {
-                    scope.push(name, BufferRhaiRef{name: name.clone(), size: b.len()});
+                    scope.push(name, BufferRhaiRef{name: name.clone(), size: b.len() as i32});
                 }
                 Buff::DynImage(_) => {
-                    scope.push(name, ImageRhaiRef{name: name.clone(), width: self.dynimg_size.0, height: self.dynimg_size.1});
+                    scope.push(name, ImageRhaiRef{name: name.clone(), width: self.dynimg_size.0 as i32, height: self.dynimg_size.1 as i32});
                 }
                 Buff::Image(_, w, h) => {
                     scope.push(name, ImageRhaiRef{name: name.clone(), width: *w, height: *h});
@@ -386,10 +390,10 @@ impl CScope {
     fn create_int_buffer(&mut self, name: String, raw_data: Vec<Dynamic>) -> BufferRhaiRef {
         let mut data = Vec::with_capacity(raw_data.len());
         for d in raw_data {
-            data.push(d.cast::<i64>());
+            data.push(d.cast::<i32>());
         }
         
-        let buff = Buffer::<i64>::builder()
+        let buff = Buffer::<i32>::builder()
             .queue(self.prog_queue.queue().clone())
             .len(data.len())
             .build()
@@ -398,7 +402,22 @@ impl CScope {
         self.get_buffers_mut().insert(name.clone(), Buff::IntBuffer(buff));
         return BufferRhaiRef {
             name: name,
-            size: data.len()
+            size: data.len() as i32
+        };
+    }
+
+
+    fn create_int_buffer_of_size(&mut self, name: String, size: i32) -> BufferRhaiRef {
+        let buff = Buffer::<i32>::builder()
+            .queue(self.prog_queue.queue().clone())
+            .len(size)
+            .build()
+            .expect("Could not allocate buffer");
+
+        self.get_buffers_mut().insert(name.clone(), Buff::IntBuffer(buff));
+        return BufferRhaiRef {
+            name: name,
+            size: size
         };
     }
 
@@ -406,10 +425,10 @@ impl CScope {
     fn create_float_buffer(&mut self, name: String, raw_data: Vec<Dynamic>) -> BufferRhaiRef {
         let mut data = Vec::with_capacity(raw_data.len());
         for d in raw_data {
-            data.push(d.cast::<f64>());
+            data.push(d.cast::<f32>());
         }
         
-        let buff = Buffer::<f64>::builder()
+        let buff = Buffer::<f32>::builder()
             .queue(self.prog_queue.queue().clone())
             .len(data.len())
             .build()
@@ -419,7 +438,22 @@ impl CScope {
 
         return BufferRhaiRef {
             name: name,
-            size: data.len()
+            size: data.len() as i32
+        };
+    }
+
+
+    fn create_float_buffer_of_size(&mut self, name: String, size: i32) -> BufferRhaiRef {
+        let buff = Buffer::<f32>::builder()
+            .queue(self.prog_queue.queue().clone())
+            .len(size)
+            .build()
+            .expect("Could not allocate buffer");
+
+        self.get_buffers_mut().insert(name.clone(), Buff::FloatBuffer(buff));
+        return BufferRhaiRef {
+            name: name,
+            size: size
         };
     }
 
@@ -441,11 +475,11 @@ impl CScope {
             .queue(queue)
             .len(width * height * 3)
             .build()
-            .expect("Could not allocate buffer"), width, height));
+            .expect("Could not allocate buffer"), width as i32, height as i32));
         return ImageRhaiRef {
             name: name,
-            width: width,
-            height: height
+            width: width as i32,
+            height: height as i32
         };
     }
 }
